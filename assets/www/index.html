@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <link rel="stylesheet" type="text/css" href="css/jquery.mobile-1.4.5.css" />        
+        <title>Pcci Survey</title>
+        <script type="text/javascript" src="cordova.js"></script>
+		<script type="text/javascript" src="js/jquery-1.10.2.min.js"></script>
+		<script type="text/javascript" src="js/jquery.mobile-1.4.5.js"></script>
+		<script>
+		function takeSurvey(){
+			document.indexForm.action = "survey.html";
+			document.indexForm.submit();
+		}
+		document.addEventListener("backbutton", onBackKeyDown, false);
+		function onBackKeyDown(){
+			if(confirm('You want to exit from app?')){
+				navigator.app.exitApp();
+			}
+		}
+		</script>		
+    </head>
+    <body>
+    <div data-role="page">
+    	<div data-role="header" data-position="fixed">    	    
+            <h1>PCCI Health Care System</h1>            
+        </div>
+    	<div role="main" class="ui-content">
+        <form name="indexForm" id="indexForm">
+		    <input value="Reminders" data-theme="d" type="button">
+		    <input value="My Chart" data-theme="d" type="button">
+		    <input value="Education" data-theme="d" type="button">
+		    <input value="Action Plan" data-theme="d" type="button">
+		    <input value="Take the ACT survey" data-theme="d" type="button" onclick="takeSurvey()">
+		    <input value="Select user" data-theme="d" type="button">
+		</form>
+		</div> 
+	</div>	       
+    </body>
+</html>

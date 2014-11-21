@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <link rel="stylesheet" type="text/css" href="css/jquery.mobile-1.4.5.css" />        
+        <title>Pcci Survey</title>
+        <script type="text/javascript" src="cordova.js"></script>
+		<script type="text/javascript" src="js/jquery-1.10.2.min.js"></script>
+		<script type="text/javascript" src="js/jquery.mobile-1.4.5.js"></script>
+		<script>
+				
+		$.mobile.loading( 'show', {
+			text: 'Loading Database...',
+			textVisible: true,
+			theme: 'a',
+			html: ""
+		});
+		
+		var patientSurveyIds = [];
+		
+		function goHome(){
+			document.surveyForm.action = "index.html";
+			document.surveyForm.submit();
+		}
+		function get(id){
+			return document.getElementById(id);
+		}
+		function goToPrevious(){
+			var total = get('total').value;
+			var count = get('count').value;
+			if(count > 1 && count <= total){
+				get('q'+count).className = 'hide';
+				get('count').value = parseInt(count,10)-1;
+				count = get('count').value;
+				get('q'+count).className = 'show';
+			}else{
+				alert("You are at first question");
+			}
+		}
+		function goToNext(){
+			var total = get('total').value;
+			var count = get('count').value;
+			if(count > 0 && count < total){			
+				get('q'+count).className = 'hide';
+				get('count').value = parseInt(count,10)+1;
+				count = get('count').value;
+				get('q'+count).className = 'show';
+			}else{
+				alert("You are at last question");
+			}
+		}
+		function selectOption(i){
+			var options = document.getElementsByName('q'+i+'a');
+			var count = 0;					
+	    	for(var j=0;j<options.length;j++){
+	    		if(options[j].checked){
+	    			count++;
+	    		}
+	    	}			    			
+			if(count > 0){
+				return "yes";
+			}else{
+				return "no";
+			}
+		}
+		function submitSurvey(){
+			var total = get('total').value;
+			var select = 0;
+			for(var i=1;i<=total;i++){				
+				if(selectOption(i) == 'yes'){					
+					select = parseInt(select,10)+1;
+				}				
+			}
+			if(select > 0){				
+				var db = window.sqlitePlugin.openDatabase({name: "survey.db"});		
+				
+		  		db.transaction(function(tx) {		
+		  			tx.executeSql("BEGIN IMMEDIATE TRANSACTION");	  			  			
+		  			for(var i=1;i<=total;i++){
+						var questionId = 0;var answerId = 0;
+						questionId = get('qid'+i).value;
+						var options = document.getElementsByName('q'+i+'a');					
+				    	for(var j=0;j<options.length;j++){
+				    		if(options[j].checked){			    			
+				    			answerId = options[j].value;
+				    			updatePatientSurvey(questionId,answerId);								    			
+				    		}	    		
+				    	}				
+					}
+					tx.executeSql("COMMIT TRANSACTION");					
+					tx.executeSql('select sum(score_value) as total_score from question_answers qa, patient_survey ps, questions q, answers a where qa.question_id = ps.question_id and qa.answer_id = ps.answer_id and ps.question_id = q.question_id and ps.answer_id = a.answer_id and qa.survey_id = ? and ps.survey_id = ? and ps.patient_id = ?', ["1","1","1"], function(tx, results){
+						var row = results.rows.item(0);
+						var totalScore = row["total_score"];						
+						alert("You have successfully completed survey and your score is "+totalScore);						
+					});					
+					function updatePatientSurvey(qid,aid){
+						tx.executeSql("insert into patient_survey (survey_status_id,survey_id,patient_id,question_id,answer_id) values (?,?,?,?,?)", ["1","1","1",""+qid,""+aid], function(tx, results){
+				    		updatePatientSurveyLogs(results.insertId,qid,aid);				    				    				
+						}, errorInsert);						
+					}		  	
+					function updatePatientSurveyLogs(lid,qid,aid){
+						tx.executeSql("insert into patient_survey_logs (patient_survey_id,survey_status_id,survey_id,patient_id,question_id,answer_id) values (?,?,?,?,?,?)", [""+lid,"1","1","1",""+qid,""+aid], SuccessInsert, errorInsert);
+					}			
+		  		});
+		  		setTimeout('goHome()',1000);
+			}else{
+				alert("You have not answered single question!!!");
+			}
+		}
+				
+		var questionIdArray = [];
+		
+		document.addEventListener("deviceready", onDeviceReady, false);
+		document.addEventListener("backbutton", onBackKeyDown, false);  
+		
+		function onBackKeyDown(){
+			document.surveyForm.action = "index.html";
+			document.surveyForm.submit();
+		}
+		
+    	// Cordova is ready
+		function onDeviceReady() {
+			
+		  var db = window.sqlitePlugin.openDatabase({name: "survey.db"});
+		
+		  db.transaction(function(tx) {
+		    tx.executeSql('drop table if exists patient_survey_logs');
+		    tx.executeSql('drop table if exists patient_survey');
+		    tx.executeSql('drop table if exists question_answers');
+		    tx.executeSql('drop table if exists survey_status');
+		    tx.executeSql('drop table if exists survey');
+		    tx.executeSql('drop table if exists patient');
+		    tx.executeSql('drop table if exists questions');
+		    tx.executeSql('drop table if exists input_types');
+		    tx.executeSql('drop table if exists answers');
+		    tx.executeSql('drop table if exists audit_table');
+		    
+		    tx.executeSql('create table audit_table(audit_id integer primary key autoincrement,created_date timestamp default current_timestamp,modified_date default current_timestamp)');
+			tx.executeSql('create table patient(patient_id integer primary key autoincrement,first_name varchar(64) not null,last_name varchar(64) not null,gender text not null,age tinyint(2) not null,date_of_birth date,email varchar(64) not null,mobile varchar(32) not null,address_1 varchar(256) not null,address_2 varchar(256) not null,city varchar(64) not null,state varchar(64) not null,country varchar(64) not null,pincode varchar(32) not null,audit_id integer not null,foreign key(audit_id) references audit_table(audit_id))');			
+		    tx.executeSql('create table survey(survey_id integer primary key autoincrement,survey_name varchar(64) not null,survey_description text not null,survey_min_age_group tinyint(2) not null,survey_max_age_group tinyint(2) not null,audit_id integer not null,foreign key(audit_id) references audit_table(audit_id))');		    
+		    tx.executeSql('create table survey_status(survey_status_id integer primary key autoincrement,survey_status_name varchar(64) not null,survey_status_description varchar(128) not null)');		    
+		    tx.executeSql('create table input_types (input_type_id integer primary key autoincrement,input_type_name text not null,input_type_description varchar(128) not null,audit_id integer not null,foreign key(audit_id) references audit_table(audit_id))');
+		    tx.executeSql('create table questions (question_id integer primary key autoincrement,question_text text not null,input_type_id integer not null,audit_id integer not null,foreign key(audit_id) references audit_table(audit_id))');
+		    tx.executeSql('create table answers (answer_id integer primary key autoincrement,answer_text text not null,audit_id integer not null,foreign key(audit_id) references audit_table(audit_id))');
+		    tx.executeSql('create table question_answers (question_answer_id integer primary key autoincrement,survey_id integer not null,question_id integer not null,answer_id integer not null,score_value smallint(3) not null,relative_question_id integer null,condition_question_id integer null,foreign key (survey_id) references survey(survey_id),foreign key (question_id) references questions(question_id),foreign key (answer_id) references answers(answer_id),foreign key (relative_question_id) references questions(question_id),foreign key (condition_question_id) references questions(question_id))');
+		    tx.executeSql('create table patient_survey (patient_survey_id integer primary key autoincrement,survey_status_id integer not null,survey_id integer not null,patient_id integer not null,question_id integer not null,answer_id integer not null,answer_text text,date_taken timestamp default current_timestamp,date_completed timestamp default current_timestamp,foreign key(survey_status_id) references survey_status(survey_status_id),foreign key(survey_id) references survey(survey_id),foreign key(patient_id) references patient(patient_id),foreign key(question_id) references questions(question_id),foreign key(answer_id) references answers(answer_id))');
+		    tx.executeSql('create table patient_survey_logs (patient_survey_log_id integer primary key autoincrement,patient_survey_id integer not null,survey_status_id integer not null,survey_id integer not null,patient_id integer not null,question_id integer not null,answer_id integer not null,answer_text text,date_taken timestamp default current_timestamp,date_completed timestamp default current_timestamp,foreign key(patient_survey_id) references patient_survey(patient_survey_id),foreign key(survey_status_id) references survey_status(survey_status_id),foreign key(survey_id) references survey(survey_id),foreign key(patient_id) references patient(patient_id),foreign key(question_id) references questions(question_id),foreign key(answer_id) references answers(answer_id))');
+		    
+			tx.executeSql('insert into audit_table (created_date,modified_date) values (?,?)',["2014-11-20 10:10:10","2014-11-20 10:10:10"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into patient (first_name,last_name,gender,age,date_of_birth,email,mobile,address_1,address_2,city,state,country,pincode,audit_id) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',["Naresh","Karri","male","25","1986-12-19","naresh.karri@tekzenit.com","9014491965","KRM Colony","Maddilapalem","Visakhapatnam","Andhra Pradesh","India","530013","1"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into survey (survey_name,survey_description,survey_min_age_group,survey_max_age_group,audit_id) values (?,?,?,?,?)',["Asthma","Tests ashtma condition","5","10","1"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into survey_status (survey_status_name,survey_status_description) values (?,?)',["opened","survey opened for asthma patient"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into input_types (input_type_name,input_type_description,audit_id) values(?,?,?)',["single","single choice answer","1"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into input_types (input_type_name,input_type_description,audit_id) values(?,?,?)',["multiple","multiple choice answer","1"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into input_types (input_type_name,input_type_description,audit_id) values(?,?,?)',["text","fill in the blank","1"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into questions (question_text,input_type_id,audit_id) values (?,?,?)',["Are you aware of your right to 48-hour access to general medical services under the GMs contract?","2","1"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into questions (question_text,input_type_id,audit_id) values (?,?,?)',["In the past 6 months, have you tried to see a GP or healthcare professional fairly quickly?","1","1"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into questions (question_text,input_type_id,audit_id) values (?,?,?)',["Were you able to see a GP or healthcare professional on the same day or in the next 2 days the GP surgery or health centre was open?","1","1"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into questions (question_text,input_type_id,audit_id) values (?,?,?)',["If you couldnt be seen within the next 2 days the GP surgery or health center was open, Why was that?","2","1"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into questions (question_text,input_type_id,audit_id) values (?,?,?)',["If you have not seen a GP or healthcare professional in the past 6 months, why is that?","2","1"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into answers (answer_text,audit_id) values (?,?)',["I have not needed to go","1"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into answers (answer_text,audit_id) values (?,?)',["I could not be seen at a convenient time","1"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into answers (answer_text,audit_id) values (?,?)',["I could not get to the GP surgery or health centre easily","1"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into answers (answer_text,audit_id) values (?,?)',["I did not like or trust the doctors","1"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into answers (answer_text,audit_id) values (?,?)',["Yes","1"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into answers (answer_text,audit_id) values (?,?)',["No","1"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into answers (answer_text,audit_id) values (?,?)',["Cant remember","1"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into answers (answer_text,audit_id) values (?,?)',["There werent any appointments","1"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into answers (answer_text,audit_id) values (?,?)',["The times offered didnt suit me","1"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into answers (answer_text,audit_id) values (?,?)',["The appointment was with a doctor I didnt want to see","1"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into answers (answer_text,audit_id) values (?,?)',["I could have seen a nurse but I wanted to see a doctor","1"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into answers (answer_text,audit_id) values (?,?)',["In the past 3 months","1"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into answers (answer_text,audit_id) values (?,?)',["In the past 6 months","1"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into answers (answer_text,audit_id) values (?,?)',["More than 6 months ago","1"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into answers (answer_text,audit_id) values (?,?)',["Between 3 and 6 months ago","1"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into answers (answer_text,audit_id) values (?,?)',["I have never seen health care centre","1"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into question_answers (survey_id,question_id,answer_id,score_value,relative_question_id,condition_question_id) values (?,?,?,?,?,?)',["1","1","1","0","null","2"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into question_answers (survey_id,question_id,answer_id,score_value,relative_question_id,condition_question_id) values (?,?,?,?,?,?)',["1","1","2","1","null","3"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into question_answers (survey_id,question_id,answer_id,score_value,relative_question_id,condition_question_id) values (?,?,?,?,?,?)',["1","1","3","2","3","5"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into question_answers (survey_id,question_id,answer_id,score_value,relative_question_id,condition_question_id) values (?,?,?,?,?,?)',["1","1","4","3","null","null"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into question_answers (survey_id,question_id,answer_id,score_value,relative_question_id,condition_question_id) values (?,?,?,?,?,?)',["1","2","5","0","null","4"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into question_answers (survey_id,question_id,answer_id,score_value,relative_question_id,condition_question_id) values (?,?,?,?,?,?)',["1","2","6","1","5","null"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into question_answers (survey_id,question_id,answer_id,score_value,relative_question_id,condition_question_id) values (?,?,?,?,?,?)',["1","3","5","0","null","null"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into question_answers (survey_id,question_id,answer_id,score_value,relative_question_id,condition_question_id) values (?,?,?,?,?,?)',["1","3","6","1","null","5"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into question_answers (survey_id,question_id,answer_id,score_value,relative_question_id,condition_question_id) values (?,?,?,?,?,?)',["1","4","12","0","null","null"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into question_answers (survey_id,question_id,answer_id,score_value,relative_question_id,condition_question_id) values (?,?,?,?,?,?)',["1","4","13","1","3","5"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into question_answers (survey_id,question_id,answer_id,score_value,relative_question_id,condition_question_id) values (?,?,?,?,?,?)',["1","4","14","2","2","null"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into question_answers (survey_id,question_id,answer_id,score_value,relative_question_id,condition_question_id) values (?,?,?,?,?,?)',["1","4","15","3","null","null"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into question_answers (survey_id,question_id,answer_id,score_value,relative_question_id,condition_question_id) values (?,?,?,?,?,?)',["1","4","16","4","null","5"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into question_answers (survey_id,question_id,answer_id,score_value,relative_question_id,condition_question_id) values (?,?,?,?,?,?)',["1","5","1","0","null","null"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into question_answers (survey_id,question_id,answer_id,score_value,relative_question_id,condition_question_id) values (?,?,?,?,?,?)',["1","5","2","1","2","null"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into question_answers (survey_id,question_id,answer_id,score_value,relative_question_id,condition_question_id) values (?,?,?,?,?,?)',["1","5","3","2","null","null"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into question_answers (survey_id,question_id,answer_id,score_value,relative_question_id,condition_question_id) values (?,?,?,?,?,?)',["1","5","4","3","2","null"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into question_answers (survey_id,question_id,answer_id,score_value,relative_question_id,condition_question_id) values (?,?,?,?,?,?)',["1","5","5","4","null","null"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into question_answers (survey_id,question_id,answer_id,score_value,relative_question_id,condition_question_id) values (?,?,?,?,?,?)',["1","5","6","5","1","null"],SuccessInsert,errorInsert);
+		    tx.executeSql('insert into question_answers (survey_id,question_id,answer_id,score_value,relative_question_id,condition_question_id) values (?,?,?,?,?,?)',["1","5","7","6","null","null"],SuccessInsert,errorInsert);
+		    
+		    tx.executeSql('select distinct qa.question_id,q.question_text from questions q,question_answers qa where qa.question_id = q.question_id and qa.survey_id = ?', ["1"], function(tx, results){
+		    	
+		    	var len = results.rows.length;	
+		    	var htmlData = '';	
+		    	for (var i=0; i<len; i++){
+		        	var row = results.rows.item(i);		        	
+		        	questionIdArray.push(row["question_id"]);		        	
+			    	var count = parseInt(i,10)+1;
+	            	htmlData += '<input type="hidden" id="qid'+count+'" name="qid'+count+'" value="'+row["question_id"]+'" /><div id="q'+count+'"';
+	            	if(i > 0){
+			            htmlData += ' class="hide"';
+			        }
+			        htmlData += '>'+count+'. '+row["question_text"]+'<br/><div id="qa'+row["question_id"]+'"></div></div>';			        			    		    	 
+		        }
+		        
+		        get('survey').innerHTML = htmlData;	
+		        
+		        //console.log(questionIdArray.length);
+		        
+		        get('total').value = questionIdArray.length;
+		        
+		        for(i=0;i<questionIdArray.length;i++){		        		        	
+		        	executeInnerQuery(questionIdArray[i],i);
+		        }
+		        	        		        		
+		        function executeInnerQuery(qid,i){
+		        	tx.executeSql('select a.answer_id,a.answer_text from answers a,question_answers qa where qa.answer_id = a.answer_id and qa.question_id = ?;', [""+qid], function(tx, results){
+	            		var len = results.rows.length;	    
+	            		var htmlData1 = '';        				            
+	            		var n = parseInt(i,10)+1;
+			        	for(var j=0; j<len; j++){		        		
+			        		var row = results.rows.item(j);
+			        		//console.log("answer id = "+row["answer_id"]);			        		
+			        		htmlData1 += '<label><input type="radio" id="q'+n+'a" name="q'+n+'a" value="'+row["answer_id"]+'" />'+row["answer_text"]+'</label>';
+			        	}		        	
+			        	get('qa'+qid).innerHTML = htmlData1;		        				        	
+				    });
+		        }	        		        		
+		        	        		        		        
+		    });
+		    		    
+		    });
+		}	
+		
+		function querySuccess(tx, results){
+	        //$.mobile.showPageLoadingMsg(true);
+    	}		
+		function SuccessInsert(tx,result){
+		    console.log("Last inserted ID = " + result.insertId);
+		}
+		function errorInsert(error){
+			console.log("Error processing SQL: "+error.code);
+		}	
+					
+		</script>
+    </head>
+    <body>  
+    	<div data-role="page">  	
+        <form name="surveyForm" id="surveyForm">
+        	<input type="hidden" id="total" name="total" value="0" />
+        	<input type="hidden" id="count" name="count" value="1" />
+        	<div data-role="header" data-position="fixed">
+        	    <a href="goHome()" data-role="button" data-icon="back" data-theme="a" title="Back">Back</a>
+                <h1>Pcci Survey</h1>
+                <a href="goHome()" data-role="button" data-icon="home" data-theme="a" title="Home">Home</a>
+	        </div>
+	        <div role="main" class="ui-content">			    
+		    <div id="survey"></div>
+		    </div>
+		    <div data-role="footer" data-position="fixed">		     
+		    <div class="ui-grid-b">
+			    <div class="ui-block-a"><a href="javascript:goToPrevious()" data-role="button" data-icon="arrow-l" data-iconpos="left">Previous</a></div>
+			    <div class="ui-block-b"><a href="javascript:goToNext()" data-role="button" data-icon="arrow-r" data-iconpos="right">Next</a></div>
+			    <div class="ui-block-c"><button type="button" onclick="submitSurvey()" data-theme="d">Submit</button></div>
+			</div>
+			</div>
+		</form>
+		</div>
+		<script>
+		$.mobile.hidePageLoadingMsg();
+		</script>        
+    </body>
+</html>
